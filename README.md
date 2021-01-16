@@ -1,2 +1,2 @@
-# comic_unarchiver
-This is module for unarchive all possible comics storages
+# ComicUnarchiver
+This is module is dedicated to work with a comic books and to unarchive the cbr, cbz, pdf formats to the basic images.
