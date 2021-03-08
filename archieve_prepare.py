@@ -1,15 +1,22 @@
 import os
 import shutil
+import zipfile
+import tarfile
 import rarfile
 from pprint import pprint
 from pdf2image import convert_from_path
 from config import (origin_limited,
                     origin_oneshot,
-                    separator,
                     folder_workspace,
                     format_usefull,
                     format_pdf,
                     format_cbr,
+                    format_cbz,
+                    format_rar,
+                    format_tar,
+                    format_zip,
+                    format_tar_sec,
+                    format_tar_special,
                     format_jpg,
                     format_jpeg,
                     format_image,
@@ -46,7 +53,7 @@ class ArchieveBasics:
         Input:  all path which can be used
         Output: string for all of that
         """
-        sep = separator if 'sep' not in kwargs.keys() else kwargs['sep']
+        sep = os.sep if 'sep' not in kwargs.keys() else kwargs['sep']
         return sep.join(args)
 
     @staticmethod
@@ -95,7 +102,7 @@ class ArchieveBasics:
         Input:  file_name = string which is dedicated to  
         Output: we created folders and subfolders if it is required
         """
-        value_list, value_return = file_name.split(separator), file_name
+        value_list, value_return = file_name.split(os.sep), file_name
         if len(value_list) > 1:
             value_replaced = [self.folder_rechange[v] if v in self.folder_rechange.keys() else v for v in value_list]
             if value_replaced == value_list:
@@ -106,7 +113,7 @@ class ArchieveBasics:
                 self.create_folder(value_return)
         return value_return
 
-    def find_directory_files(self, path_directory:str, path_type:bool) -> (list, dict):
+    def find_directory_files(self, path_directory:str, path_type:bool) -> dict:
         """
         Method which is dedicated to work with files
         Input:  path_directory = path to the directory where to put values
@@ -138,7 +145,7 @@ class ArchieveBasics:
         return [[size, folder, files] for size, folder, files in value_list if size and files]
 
     @staticmethod
-    def return_ext(file_path:str) -> (str, str):
+    def return_ext(file_path:str) -> set:
         """
         Static method which is dedicated to return extenstion
         Input:  file_path = full path to the file
@@ -207,6 +214,11 @@ class Archiever(ArchieveBasics):
         self.archieve_method = {
             format_pdf: self.unarchieve_pdf,
             format_cbr: self.unarchive_cbr,
+            format_cbz: self.unarchive_cbr,
+            format_rar: self.unarchive_cbr,
+            format_tar: self.unarchive_tar,
+            format_tar_sec: self.unarchive_tar,
+            format_zip: self.unarchive_zip,
         }
 
     def unarchieve_pdf(self, file_path:str, file_output:str) -> None:
@@ -228,39 +240,54 @@ class Archiever(ArchieveBasics):
         Output: we successfully created list of images from the cbr
         """
         with rarfile.RarFile(file_path) as archive:
-            value_within_folder = [True if separator in v else False for v in archive.namelist()]
             for value_page, value_name in enumerate(archive.namelist()):
-                if separator in value_name:
-                    _, value_format = self.return_ext(value_name)
-                    if value_format in format_image:
-                        file_input = self.get_path(file_output, value_name)
-                        file_output_tmp = self.get_path(file_output, f"{value_page}{value_format}")
-                        archive.extract(value_name, file_output)
-                        self.move_file(file_input, file_output_tmp)
-                    else:
-                        #TODO add this posibility later
-                        pass
-            list_remove = [self.get_path(file_output, v) for v in os.listdir(file_output) if os.path.isdir(self.get_path(file_output, v))]
-            for k in list_remove:
-                self.remove_file(k, True)
-            
-    def unarchive_cbz(self, file_path:str, file_output:str) -> None:
-        """
-        Method which is dedicated to unarchive cbz files to the folders
-        Input:  file_path = path of the origin
-                file_output = place where to store files
-        Output: we successfully unarchived everything
-        """
-        pass
+                _, value_format = self.return_ext(value_name)
+                if value_format in format_image:
+                    file_input = self.get_path(file_output, value_name)
+                    file_output_tmp = self.get_path(file_output, f"{value_page}{value_format}")
+                    archive.extract(value_name, file_output)
+                    self.move_file(file_input, file_output_tmp)
+                else:
+                    #TODO add this posibility later
+                    pass
+        files_unnecessary = []
+        for v in os.listdir(file_output):
+            value_path = self.get_path(file_output, v)
+            _, value_ext = os.path.splitext(v)
+            if os.path.isdir(value_path):
+                files_unnecessary.append([value_path, True])
+            elif not os.path.isdir(value_path) and value_ext not in format_image:
+                files_unnecessary.append([value_path, False])
+        for path, boolean in files_unnecessary:
+            self.remove_file(path, boolean)
     
-    def unarchive_rar(self, file_path:str, file_output:str) -> None:
+    def unarchive_tar(self, file_path:str, file_output:str) -> None:
         """
-        Method which is dedicated to unarchive rar files to the folders
+        Method which is dedicated to unarchive tar files to the folders
         Input:  file_path = path of the origin
                 file_output = place where to store files
         Output: we successfully unarchived everything
         """
-        pass
+        with tarfile.open(file_path) as archive:
+            for value_page, value_name in enumerate([f.name for f in archive.getmembers()]):
+                _, value_ext = os.path.splitext(value_name)
+                if value_ext in format_image:
+                    file_input = self.get_path(file_output, value_name)
+                    file_output_tmp = self.get_path(file_output, f"{value_page}{value_ext}")
+                    archive.extract(value_name, file_output)
+                    self.move_file(file_input, file_output_tmp)
+                else:
+                    pass
+        files_unnecessary = []
+        for v in os.listdir(file_output):
+            value_path = self.get_path(file_output, v)
+            _, value_ext = os.path.splitext(v)
+            if os.path.isdir(value_path):
+                files_unnecessary.append([value_path, True])
+            elif not os.path.isdir(value_path) and value_ext not in format_image:
+                files_unnecessary.append([value_path, False])
+        for path, boolean in files_unnecessary:
+            self.remove_file(path, boolean)
 
     def unarchive_zip(self, file_path:str, file_output:str) -> None:
         """
@@ -269,7 +296,27 @@ class Archiever(ArchieveBasics):
                 file_output = place where to store files
         Output: we successfully unarchived everything
         """
-        pass
+        #TODO add making copies to the existing materials
+        with zipfile.ZipFile(file_path) as archive:
+            for value_page, value_name in enumerate(archive.namelist()):
+                _, value_ext = os.path.splitext(value_name)
+                if value_ext in format_image:
+                    file_input = self.get_path(file_output, value_name)
+                    file_output_tmp = self.get_path(file_output, f"{value_page}{value_ext}")
+                    archive.extract(value_name, file_output)
+                    self.move_file(file_input, file_output_tmp)
+                else:
+                    pass
+        files_unnecessary = []
+        for v in os.listdir(file_output):
+            value_path = self.get_path(file_output, v)
+            _, value_ext = os.path.splitext(v)
+            if os.path.isdir(value_path):
+                files_unnecessary.append([value_path, True])
+            elif not os.path.isdir(value_path) and value_ext not in format_image:
+                files_unnecessary.append([value_path, False])
+        for path, boolean in files_unnecessary:
+            self.remove_file(path, boolean)
 
 
 class ArchieveValues(Archiever):
@@ -287,7 +334,7 @@ class ArchieveValues(Archiever):
                 folder_type = boolean value 
         Output: we removed processed folder
         """
-        if folder_path.split(separator)[-1] not in self.folder_rechange.keys():
+        if folder_path.split(os.sep)[-1] not in self.folder_rechange.keys():
             self.remove_file(folder_path, True)
 
     def produce_extraction(self, folder_path:str, folder_file:str) -> None:
@@ -299,6 +346,8 @@ class ArchieveValues(Archiever):
         path_input = self.get_path(folder_path, folder_file)
         name, ext = self.return_ext(path_input)
         path_output = self.return_folder_output(name)
+        if ext == format_tar_sec and format_tar_special in path_input:
+            path_output = path_output[:-4]
         if ext in self.archieve_method.keys():
             self.archieve_method[ext](path_input, path_output)
             self.remove_file(path_input)
@@ -322,7 +371,7 @@ class ArchieveValues(Archiever):
                 self.produce_extraction(folder_path, folder_file)
             self.correct_input_files(folder_path)
         self.correct_everything(self.name_origin)
-                
+
     def make_check_output(self):
         """
         Method which is dedicated to produce further development in case to write inside the database
